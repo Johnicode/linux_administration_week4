@@ -1,0 +1,44 @@
+import os
+
+import pymysql
+from flask import Flask, make_response, render_template
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+app = Flask(__name__)
+
+# Nginx kertoo alkuperäisen yhteyden tiedot ja sovelluksen alipolun (/viikko2).
+app.wsgi_app = ProxyFix(
+    app.wsgi_app,
+    x_for=1,
+    x_proto=1,
+    x_prefix=1,
+)
+
+
+def lue_laskuri():
+    yhteys = pymysql.connect(
+        unix_socket="/run/mysqld/mysqld.sock",
+        user="ro_user",
+        password=os.environ["DB_PASSWORD"],
+        database="viikko2",
+        charset="utf8mb4",
+        autocommit=True,
+    )
+    try:
+        with yhteys.cursor() as kursori:
+            kursori.execute(
+                "SELECT kaynnit FROM laskuri WHERE id = 1"
+            )
+            kaynnit = kursori.fetchone()[0]
+        return kaynnit
+    finally:
+        yhteys.close()
+
+
+@app.route("/")
+def etusivu():
+    kaynnit = lue_laskuri()
+    vastaus = make_response(render_template("index.html", kaynnit=kaynnit))
+    # Selain ei saa näyttää vanhaa laskurin arvoa välimuistista
+    vastaus.headers["Cache-Control"] = "no-store"
+    return vastaus

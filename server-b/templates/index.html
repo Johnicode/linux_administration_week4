@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Week 4 - Server B (Read-Only Replica)</title>
+  <style>
+    body {
+      background-color: #eef7ef;
+      font-family: Arial, sans-serif;
+      max-width: 780px;
+      margin: 25px auto;
+      padding: 0 15px;
+      line-height: 1.5;
+    }
+    pre {
+      background-color: #fff;
+      padding: 10px;
+      overflow-x: auto;
+    }
+    code {
+      background-color: #dfeee1;
+      padding: 1px 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Week 4 - Server B (Read-Only Replica)</h1>
+
+  <p><strong>Visitor counter (replicated from Server A): {{ kaynnit }}</strong></p>
+  <p>This is a read-only replica running on Server B. Reloading this page does not increment the counter.</p>
+
+  <p>
+    Links:
+    <a href="http://195.148.21.184/viikko2/">Server A (/viikko2/)</a> |
+    <a href="http://86.50.20.121/viikko4/">Server B (/viikko4/)</a> |
+    <a href="https://github.com/Johnicode/linux_administration_week4">GitHub</a>
+  </p>
+
+  <hr>
+
+  <h2>Setup &amp; Storage</h2>
+  <p>Server B was created in cPouta from a snapshot of Server A and given its own IP address. Server A still runs the original Week 2 counter and Week 3 report.</p>
+  <ul>
+    <li><strong>Server A:</strong> web files in <code>/var/www/html</code>, Flask app in <code>/home/ubuntu/viikko2-app</code>, backup script in <code>/home/ubuntu/backup_www.sh</code> (logs to <code>backup.log</code>).</li>
+    <li><strong>Server B:</strong> backups stored outside web root in <code>/var/backups/server-a/</code>, read-only Flask app in <code>/home/ubuntu/viikko2-app</code>.</li>
+  </ul>
+
+  <h2>Users &amp; Permissions</h2>
+  <ul>
+    <li><strong>Linux:</strong> <code>ubuntu</code> runs the app and cron job. A separate <code>backupuser</code> on Server B receives files over SSH with a dedicated key. <code>/var/backups/server-a/</code> is owned by <code>backupuser:backupuser</code> with <code>chmod 700</code>.</li>
+    <li><strong>MariaDB:</strong> A dedicated replication user on Server A is limited to Server B's private IP. On Server B, the app uses <code>ro_user@localhost</code> with only <code>SELECT</code> privileges on <code>viikko2.*</code>, and <code>read_only = 1</code> is enabled.</li>
+  </ul>
+
+  <h2>Backups &amp; Replication</h2>
+  <p>An hourly cron job on Server A (<code>0 * * * * /home/ubuntu/backup_www.sh</code>) packs <code>/var/www/html</code> into timestamped <code>.tar.gz</code> files and copies them to Server B via SCP.</p>
+  <pre>-rw-rw-r-- 1 backupuser backupuser 1.2K Nov 20 14:00 www_backup_2026-11-20_14-00-01.tar.gz
+-rw-rw-r-- 1 backupuser backupuser 1.2K Nov 20 15:00 www_backup_2026-11-20_15-00-01.tar.gz</pre>
+
+  <p>MariaDB replicates continuously from Server A (<code>server-id = 1</code>) to Server B (<code>server-id = 2</code>). Replication does not replace historical backups, because accidental deletes or corrupted data on Server A are copied to Server B immediately.</p>
+  <pre>Slave_IO_Running: Yes
+Slave_SQL_Running: Yes
+Master_Log_File: mysql-bin.000001
+Read_Master_Log_Pos: 1402
+Seconds_Behind_Master: 0
+Last_Error:</pre>
+
+  <h2>Tests</h2>
+  <ul>
+    <li>Both <code>/viikko2/</code> (Server A) and <code>/viikko4/</code> (Server B) are publicly accessible.</li>
+    <li>Reloading Server A increments the counter and the new value appears on Server B after refresh (e.g. <code>71</code> -&gt; <code>72</code>).</li>
+    <li>Reloading Server B does not change the counter.</li>
+    <li>Two scheduled hourly backups (14:00 and 15:00) succeeded, and a test file restored to a temporary folder matched the original.</li>
+    <li>After rebooting Server B, the website, replication, and hourly backups kept working.</li>
+  </ul>
+
+  <h2>What I Learned</h2>
+  <p>Because Server B was cloned from Server A, the Flask app and systemd service were already there. Instead of making a separate static page for <code>/viikko4/</code>, I pointed Nginx <code>/viikko4/</code> to Gunicorn and put both the live counter and documentation in the same Flask template.</p>
+</body>
+</html>
