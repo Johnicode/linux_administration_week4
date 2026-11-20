@@ -1,0 +1,5 @@
+# Sanitised replication settings from /etc/mysql/mariadb.conf.d/50-server.cnf (Server A)
+[mysqld]
+bind-address            = 0.0.0.0
+server-id               = 1
+log_bin                 = /var/log/mysql/mysql-bin.log
